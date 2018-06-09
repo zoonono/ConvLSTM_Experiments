@@ -1,3 +1,5 @@
+#Moving MNIST dataset could be downloaded in the following link http://www.cs.toronto.edu/~nitish/unsupervised_video/
+
 import tensorflow as tf
 import numpy as np
 
