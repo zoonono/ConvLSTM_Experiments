@@ -32,7 +32,8 @@ class MovingMNISTdataset(Dataset):
             self.testsample_ = self.test[:, 10*indx:10*(index+1), :, :]
             self.sample_ = self.trainsample_
 
-        return self.sample_
+        self.sample = torch.from_numpy(np.expand_dims(self.sample_, axis = 2)).float()
+        return self.sample
 
 def weights_init(m):
     classname = m.__class__.__name__
@@ -57,8 +58,6 @@ class CLSTM_cell(nn.Module):
 
     def forward(self, input, hidden_state):
         hx, cx = hidden_state
-        print(input.dtype)
-        print(hx.dtype) 
         combined = torch.cat((input, hx), 1)
         gates = self.conv(combined)
 
@@ -109,8 +108,8 @@ class CLSTM(nn.Module):
             input is the tensor of shape seq_len,Batch,Chans,H,W
         """
 
-        current_input = input.transpose(0, 1)#now is seq_len,B,C,H,W
-        #current_input=input
+        #current_input = input.transpose(0, 1)#now is seq_len,B,C,H,W
+        current_input=input
         next_hidden=[]#hidden states(h and c)
         seq_len=current_input.size(0)
 
@@ -121,7 +120,7 @@ class CLSTM(nn.Module):
             all_output = []
             output_inner = []            
             for t in xrange(seq_len):#loop for every step
-                hidden_c=self.cell_list[idlayer](current_input[t,...],hidden_c)#cell_list is a list with different conv_lstms 1 for every layer
+                hidden_c=self.cell_list[idlayer](current_input[t, :, :, :, :],hidden_c)#cell_list is a list with different conv_lstms 1 for every layer
 
                 output_inner.append(hidden_c[0])
 
@@ -136,9 +135,35 @@ class CLSTM(nn.Module):
         for i in xrange(self.num_layers):
             init_states.append(self.cell_list[i].init_hidden(batch_size))
         return init_states
+
+class MNISTDecoder(nn.Module):
+    """
+    Decoder for MNIST
+    """
+    def __init__(self, shape, input_channels, filter_size, num_features):
+        super(MNISTDecoder, self).__init__()
+
+        self.shape = shape ##H, W
+        self.input_channels = input_channels
+        self.filter_size = filter_size
+        self.num_features = num_features
+        self.padding = (filter_size - 1)/2
+        self.conv = nn.Conv2d(self.input_channels, self.num_features, self.filter_size, 1, self.padding)
+
+    def forward(self, state_input_layer1, state_input_layer2):
+        """
+        Convlutional Decoder for ConvLSTM RNN, forward pass
+        """
+        inputlayer = torch.cat((state_input_layer1, state_input_layer2),1)
+        output = self.conv(inputlayer)
+
+        return output 
+
+
+
 ###########Usage#######################################    
 mnistdata = MovingMNISTdataset("mnist_test_seq.npy")
-getitem = mnistdata.__getitem__(10, mode = "train")
+getitem = mnistdata.__getitem__(10, mode = "train")#shape of 20 10 1 64 64, seq, batch, inpchan, shape
 
 num_features=10
 filter_size=5
@@ -148,33 +173,37 @@ inp_chans=1
 nlayers=2
 seq_len=10
 
-#If using this format, then we need to transpose in CLSTM
-input = Variable(torch.from_numpy(getitem).double()).cuda()
-print(input.dtype)
+input = getitem.cuda()
 #input = Variable(torch.rand(batch_size,seq_len,inp_chans,shape[0],shape[1])).cuda()
 
 conv_lstm=CLSTM(shape, inp_chans, filter_size, num_features,nlayers)
 conv_lstm.apply(weights_init)
 conv_lstm.cuda()
 
-print 'convlstm module:',conv_lstm
+decoder = MNISTDecoder(shape, 20, 3, 1)
+decoder.apply(weights_init)
+decoder.cuda()
 
+# print 'convlstm module:',conv_lstm
 
-print 'params:'
-params=conv_lstm.parameters()
-for p in params:
-   print 'param ',p.size()
-   print 'mean ',torch.mean(p)
+# print 'params:'
+# params=conv_lstm.parameters()
+# for p in params:
+#    print 'param ',p.size()
+#    print 'mean ',torch.mean(p)
 
 
 hidden_state=conv_lstm.init_hidden(batch_size)
-print 'hidden_h shape ',len(hidden_state)
-print 'hidden_h shape ',hidden_state[0][0].size()
+# print 'hidden_h shape ',len(hidden_state)
+# print 'hidden_h shape ',hidden_state[0][0].size()
 out=conv_lstm(input,hidden_state)
-print 'out shape',out[1].size()
-print 'len hidden ', len(out[0])
-print 'next hidden',out[0][0][0].size()
-print 'convlstm dict',conv_lstm.state_dict().keys()
+# print 'out shape',out[1].size()
+# print 'len hidden ', len(out[0])
+# print 'next hidden',out[0][0][0].size()
+# print 'convlstm dict',conv_lstm.state_dict().keys()
+pred = decoder(out[0][0][0], out[0][0][1])
+
+print 'pred', pred.shape
 
 
 L=torch.sum(out[1])
