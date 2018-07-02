@@ -160,10 +160,10 @@ class MNISTDecoder(nn.Module):
         return output 
 
 
-
 ###########Usage#######################################    
+
 mnistdata = MovingMNISTdataset("mnist_test_seq.npy")
-getitem = mnistdata.__getitem__(10, mode = "train")#shape of 20 10 1 64 64, seq, batch, inpchan, shape
+
 
 num_features=10
 filter_size=5
@@ -171,40 +171,44 @@ batch_size=10
 shape=(64,64)#H,W
 inp_chans=1
 nlayers=2
-seq_len=10
 
-input = getitem.cuda()
-#input = Variable(torch.rand(batch_size,seq_len,inp_chans,shape[0],shape[1])).cuda()
+def main():
+    '''
+    main function to run the training
+    '''
 
-conv_lstm=CLSTM(shape, inp_chans, filter_size, num_features,nlayers)
-conv_lstm.apply(weights_init)
-conv_lstm.cuda()
+    conv_lstm=CLSTM(shape, inp_chans, filter_size, num_features,nlayers)
+    conv_lstm.apply(weights_init)
+    conv_lstm.cuda()
 
-decoder = MNISTDecoder(shape, 20, 3, 1)
-decoder.apply(weights_init)
-decoder.cuda()
+    decoder = MNISTDecoder(shape, 20, 3, 1)
+    decoder.apply(weights_init)
+    decoder.cuda()
 
-# print 'convlstm module:',conv_lstm
+    lossfunction = nn.MSELoss().cuda()
 
-# print 'params:'
-# params=conv_lstm.parameters()
-# for p in params:
-#    print 'param ',p.size()
-#    print 'mean ',torch.mean(p)
+    for echo in xrange(100):
+
+        for n in xrange(700):
+
+            getitem = mnistdata.__getitem__(n, mode = "train")#shape of 20 10 1 64 64, seq, batch, inpchan, shape
+            total = 0
+
+            for i in xrange(10):
+                input = getitem[i:i+9, ...].cuda()
+                label = getitem[i+10, ...].cuda()
+
+                hidden_state = conv_lstm.init_hidden(batch_size)
+                out = conv_lstm(input, hidden_state)
+                pred = decoder(out[0][0][0], out[0][0][1])
+
+                loss = lossfunction(pred, label)
+                total += loss
+                loss.backward()
+
+            print "loss: ", total/10
+            
 
 
-hidden_state=conv_lstm.init_hidden(batch_size)
-# print 'hidden_h shape ',len(hidden_state)
-# print 'hidden_h shape ',hidden_state[0][0].size()
-out=conv_lstm(input,hidden_state)
-# print 'out shape',out[1].size()
-# print 'len hidden ', len(out[0])
-# print 'next hidden',out[0][0][0].size()
-# print 'convlstm dict',conv_lstm.state_dict().keys()
-pred = decoder(out[0][0][0], out[0][0][1])
-
-print 'pred', pred.shape
-
-
-L=torch.sum(out[1])
-L.backward()
+if __name__ == "__main__":
+    main()
