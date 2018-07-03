@@ -2,6 +2,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import torch.optim as optim
 from torch.utils.data import Dataset
 from torch.autograd import Variable
 
@@ -165,7 +166,7 @@ class MNISTDecoder(nn.Module):
 mnistdata = MovingMNISTdataset("mnist_test_seq.npy")
 
 
-num_features=10
+num_features=32
 filter_size=5
 batch_size=10
 shape=(64,64)#H,W
@@ -181,13 +182,15 @@ def main():
     conv_lstm.apply(weights_init)
     conv_lstm.cuda()
 
-    decoder = MNISTDecoder(shape, 20, 3, 1)
+    decoder = MNISTDecoder(shape, 2*num_features, 3, 1)
     decoder.apply(weights_init)
     decoder.cuda()
 
     lossfunction = nn.MSELoss().cuda()
+    optimizer1 = optim.SGD(conv_lstm.parameters(), lr = 0.01)
+    optimizer2 = optim.SGD(decoder.parameters(), lr = 0.01)
 
-    for echo in xrange(100):
+    for echo in xrange(1):
 
         for n in xrange(700):
 
@@ -198,6 +201,9 @@ def main():
                 input = getitem[i:i+9, ...].cuda()
                 label = getitem[i+10, ...].cuda()
 
+                optimizer1.zero_grad()
+                optimizer2.zero_grad()
+
                 hidden_state = conv_lstm.init_hidden(batch_size)
                 out = conv_lstm(input, hidden_state)
                 pred = decoder(out[0][0][0], out[0][0][1])
@@ -206,9 +212,10 @@ def main():
                 total += loss
                 loss.backward()
 
+                optimizer1.step()
+                optimizer2.step()
+
             print "loss: ", total/10
             
-
-
 if __name__ == "__main__":
     main()
