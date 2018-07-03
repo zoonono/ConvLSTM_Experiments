@@ -119,10 +119,10 @@ class CLSTM(nn.Module):
 
             hidden_c=hidden_state[idlayer]#hidden and c are images with several channels
             all_output = []
-            output_inner = []            
+            output_inner = []
+
             for t in xrange(seq_len):#loop for every step
                 hidden_c=self.cell_list[idlayer](current_input[t, :, :, :, :],hidden_c)#cell_list is a list with different conv_lstms 1 for every layer
-
                 output_inner.append(hidden_c[0])
 
             next_hidden.append(hidden_c)
@@ -160,35 +160,76 @@ class MNISTDecoder(nn.Module):
 
         return output 
 
+class PredModel(nn.Module):
+    """
+    Overall model with both encoder and decoder part
+    """
+    def __init__(self, CLSTMargs, decoderargs):
+        super(PredModel, self).__init__()
+
+        self.conv_lstm_shape = CLSTMargs[0]
+        self.conv_lstm_inp_chans = CLSTMargs[1]
+        self.conv_lstm_filter_size = CLSTMargs[2]
+        self.conv_lstm_num_features = CLSTMargs[3]
+        self.conv_lstm_nlayers = CLSTMargs[4]
+        self.conv_lstm = CLSTM( self.conv_lstm_shape, 
+                                self.conv_lstm_inp_chans, 
+                                self.conv_lstm_filter_size, 
+                                self.conv_lstm_num_features, 
+                                self.conv_lstm_nlayers)
+        self.conv_lstm.apply(weights_init)
+        self.conv_lstm.cuda()
+
+        self.decoder_shape = decoderargs[0]
+        self.decoder_num_features = decoderargs[1]
+        self.decoder_filter_size = decoderargs[2]
+        self.decoder_stride = decoderargs[3]
+        self.decoder = MNISTDecoder(self.decoder_shape, 
+                                    self.decoder_num_features, 
+                                    self.decoder_filter_size, 
+                                    self.decoder_stride)
+        self.decoder.apply(weights_init)
+        self.decoder.cuda()
+
+    def forward(self, input, hidden_state):
+        out = self.conv_lstm(input, hidden_state)
+        pred = self.decoder(out[0][0][0], out[0][0][1])
+        return pred
+
+    def init_hidden(self, batch_size):
+        init_states = self.conv_lstm.init_hidden(batch_size)
+        return init_states
+
 
 ###########Usage#######################################    
 
 mnistdata = MovingMNISTdataset("mnist_test_seq.npy")
+batch_size = 10
 
+CLSTM_num_features=32
+CLSTM_filter_size=5
+CLSTM_shape=(64,64)#H,W
+CLSTM_inp_chans=1
+CLSTM_nlayers=2
 
-num_features=32
-filter_size=5
-batch_size=10
-shape=(64,64)#H,W
-inp_chans=1
-nlayers=2
+CLSTMargs = [CLSTM_shape, CLSTM_inp_chans, CLSTM_filter_size, CLSTM_num_features, CLSTM_nlayers]
+
+decoder_shape = (64, 64)
+decoder_num_features = CLSTM_nlayers*CLSTM_num_features
+decoder_filter_size = 5
+decoder_stride = 1
+decoderargs = [decoder_shape, decoder_num_features, decoder_filter_size, decoder_stride]
+
 
 def main():
     '''
     main function to run the training
     '''
-
-    conv_lstm=CLSTM(shape, inp_chans, filter_size, num_features,nlayers)
-    conv_lstm.apply(weights_init)
-    conv_lstm.cuda()
-
-    decoder = MNISTDecoder(shape, 2*num_features, 3, 1)
-    decoder.apply(weights_init)
-    decoder.cuda()
-
+    net = PredModel(CLSTMargs, decoderargs)
     lossfunction = nn.MSELoss().cuda()
-    optimizer1 = optim.SGD(conv_lstm.parameters(), lr = 0.01)
-    optimizer2 = optim.SGD(decoder.parameters(), lr = 0.01)
+    optimizer = optim.SGD(net.parameters(), lr = 0.01)
+
+    hidden_state = net.init_hidden(batch_size)
 
     for echo in xrange(1):
 
@@ -201,19 +242,16 @@ def main():
                 input = getitem[i:i+9, ...].cuda()
                 label = getitem[i+10, ...].cuda()
 
-                optimizer1.zero_grad()
-                optimizer2.zero_grad()
+                optimizer.zero_grad()
 
-                hidden_state = conv_lstm.init_hidden(batch_size)
-                out = conv_lstm(input, hidden_state)
-                pred = decoder(out[0][0][0], out[0][0][1])
+                hidden_state = net.init_hidden(batch_size)
+                pred = net(input, hidden_state)
 
                 loss = lossfunction(pred, label)
                 total += loss
                 loss.backward()
 
-                optimizer1.step()
-                optimizer2.step()
+                optimizer.step()
 
             print "loss: ", total/10
             
