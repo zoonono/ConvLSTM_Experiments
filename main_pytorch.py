@@ -200,9 +200,11 @@ class PredModel(nn.Module):
         init_states = self.conv_lstm.init_hidden(batch_size)
         return init_states
 
+def crossentropyloss(pred, target):
+    loss = -torch.sum(torch.log(pred)*target + torch.log(1-pred)*(1-target))
+    return loss
 
 ###########Usage#######################################    
-
 mnistdata = MovingMNISTdataset("mnist_test_seq.npy")
 batch_size = 10
 
@@ -226,7 +228,8 @@ def main():
     main function to run the training
     '''
     net = PredModel(CLSTMargs, decoderargs)
-    lossfunction = nn.MSELoss().cuda()
+    #lossfunction = nn.MSELoss().cuda()
+    #lossfunction = nn.MSELoss()
     optimizer = optim.SGD(net.parameters(), lr = 0.01)
 
     hidden_state = net.init_hidden(batch_size)
@@ -247,7 +250,11 @@ def main():
                 hidden_state = net.init_hidden(batch_size)
                 pred = net(input, hidden_state)
 
-                loss = lossfunction(pred, label)
+                pred = F.sigmoid(pred.view(10, -1))
+                label = F.sigmoid(pred.view(10, -1))
+
+                #loss = lossfunction(pred, label)
+                loss = crossentropyloss(pred, label)
                 total += loss
                 loss.backward()
 
