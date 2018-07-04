@@ -229,8 +229,7 @@ def main():
     '''
     net = PredModel(CLSTMargs, decoderargs)
     #lossfunction = nn.MSELoss().cuda()
-    #lossfunction = nn.MSELoss()
-    optimizer = optim.SGD(net.parameters(), lr = 0.01)
+    optimizer = optim.RMSprop(net.parameters(), lr = 0.001)
 
     hidden_state = net.init_hidden(batch_size)
 
@@ -257,10 +256,16 @@ def main():
                 loss = crossentropyloss(pred, label)
                 total += loss
                 loss.backward()
+                print net.parameters()
+                for parameter in net.parameters():
+                    print(parameter)
+
+                print total
 
                 optimizer.step()
 
             print "loss: ", total/10
+            exit()
             
 if __name__ == "__main__":
     main()
