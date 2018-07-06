@@ -208,7 +208,7 @@ def crossentropyloss(pred, target):
 mnistdata = MovingMNISTdataset("mnist_test_seq.npy")
 batch_size = 10
 
-CLSTM_num_features=32
+CLSTM_num_features=64
 CLSTM_filter_size=5
 CLSTM_shape=(64,64)#H,W
 CLSTM_inp_chans=1
@@ -220,6 +220,7 @@ decoder_shape = (64, 64)
 decoder_num_features = CLSTM_nlayers*CLSTM_num_features
 decoder_filter_size = 5
 decoder_stride = 1
+
 decoderargs = [decoder_shape, decoder_num_features, decoder_filter_size, decoder_stride]
 
 
@@ -256,16 +257,12 @@ def main():
                 loss = crossentropyloss(pred, label)
                 total += loss
                 loss.backward()
-                print net.parameters()
-                for parameter in net.parameters():
-                    print(parameter)
 
                 print total
 
                 optimizer.step()
 
             print "loss: ", total/10
-            exit()
             
 if __name__ == "__main__":
     main()
