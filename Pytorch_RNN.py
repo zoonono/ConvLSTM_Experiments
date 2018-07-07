@@ -44,6 +44,41 @@ def weights_init(m):
         m.weight.data.normal_(1.0, 0.02)
         m.bias.data.fill_(0)
 
+
+class CGRU_cell(nn.Module):
+    """
+    ConvGRU Cell
+    """
+    def __init__(self, shape, input_channels, filter_size, num_features):
+        super(CGRU_cell, self).__init__()
+        self.shape = shape
+        self.input_channels = input_channels
+        self.filter_size = filter_size
+        self.num_features = num_features
+        self.padding = (filter_size-1)/2
+        self.conv1 = nn.Conv2d(self.input_channels + self.num_features, 2*self.num_features, self.filter_size, 1, self.padding)
+        self.conv2 = nn.Conv2d(self.input_channels + self.num_features, self.num_features, self.filter_size, 1, self.padding)
+
+    def forward(self, input, hidden_state):
+        htprev = hidden_state
+        combined_1= torch.cat((input, htprev), 1)
+        gates = self.conv1(combined_1)
+
+        zgate, rgate = torch.split(gates, self.num_features, dim=1)
+        z = F.sigmoid(zgate)
+        r = F.sigmoid(rgate)
+
+        combined_2 = torch.cat((input, r*htprev), 1)
+        ht = self.conv2(combined_2)
+        ht = F.tanh(ht)
+        htnext = (1-z)*htprev + z*ht
+
+        return htnext
+
+    def init_hidden(self, batch_size):
+        return Variable(torch.zeros(batch_size, self.num_features, self.shape[0], self.shape[1])).cuda()
+
+
 class CLSTM_cell(nn.Module):
     """ConvLSTMCell
     """
@@ -77,7 +112,7 @@ class CLSTM_cell(nn.Module):
         return (Variable(torch.zeros(batch_size, self.num_features, self.shape[0], self.shape[1])).cuda(), 
                 Variable(torch.zeros(batch_size, self.num_features, self.shape[0], self.shape[1])).cuda())
 
-class CLSTM(nn.Module):
+class CRNN(nn.Module):
     """Initialize a basic Conv LSTM cell.
     Args:
       shape: int tuple thats the height and width of the hidden states h and c()
@@ -85,21 +120,33 @@ class CLSTM(nn.Module):
       num_features: int thats the num of channels of the states, like hidden_size
       
     """
-    def __init__(self, shape, input_chans, filter_size, num_features,num_layers):
-        super(CLSTM, self).__init__()
+    def __init__(self, shape, input_chans, filter_size, num_features,num_layers, cell = 'CLSTM'):
+        super(CRNN, self).__init__()
         
         self.shape = shape#H,W
         self.input_chans=input_chans
         self.filter_size=filter_size
         self.num_features = num_features
         self.num_layers=num_layers
+        self.cell = cell
+
         cell_list=[]
-        cell_list.append(CLSTM_cell(self.shape, self.input_chans, self.filter_size, self.num_features).cuda())#the first
-        #one has a different number of input channels
         
-        for idcell in xrange(1,self.num_layers):
-            cell_list.append(CLSTM_cell(self.shape, self.num_features, self.filter_size, self.num_features).cuda())
-        self.cell_list=nn.ModuleList(cell_list)      
+        if self.cell == 'CGRU':
+            cell_list.append(CGRU_cell(self.shape, self.input_chans, self.filter_size, self.num_features).cuda())            
+        
+            for idcell in xrange(1,self.num_layers):
+                cell_list.append(CGRU_cell(self.shape, self.num_features, self.filter_size, self.num_features).cuda())
+            self.cell_list=nn.ModuleList(cell_list)
+
+        
+        else:
+            cell_list.append(CLSTM_cell(self.shape, self.input_chans, self.filter_size, self.num_features).cuda())
+
+            for idcell in xrange(1,self.num_layers):
+                cell_list.append(CLSTM_cell(self.shape, self.num_features, self.filter_size, self.num_features).cuda())
+            self.cell_list=nn.ModuleList(cell_list) 
+      
 
     
     def forward(self, input, hidden_state):
@@ -122,12 +169,17 @@ class CLSTM(nn.Module):
             output_inner = []
 
             for t in xrange(seq_len):#loop for every step
-                hidden_c=self.cell_list[idlayer](current_input[t, :, :, :, :],hidden_c)#cell_list is a list with different conv_lstms 1 for every layer
-                output_inner.append(hidden_c[0])
+                hidden_c=self.cell_list[idlayer](current_input[t, :, :, :, :],hidden_c)
+                if self.cell == 'CLSTM':
+                    output_inner.append(hidden_c[0])
+                else:
+                    output_inner.append(hidden_c)
 
             next_hidden.append(hidden_c)
-            current_input = torch.cat(output_inner, 0).view(current_input.size(0), *output_inner[0].size())#seq_len,B,chans,H,W
-
+            if self.cell == 'CLSTM':
+                current_input = torch.cat(output_inner, 0).view(seq_len, *output_inner[0].size())#seq_len,B,chans,H,W
+            else:
+                current_input = torch.cat(output_inner, 0).view(seq_len, *output_inner[0].size())
 
         return next_hidden, current_input
 
@@ -164,21 +216,24 @@ class PredModel(nn.Module):
     """
     Overall model with both encoder and decoder part
     """
-    def __init__(self, CLSTMargs, decoderargs):
+    def __init__(self, CRNNargs, decoderargs, cell = 'CLSTM'):
         super(PredModel, self).__init__()
 
-        self.conv_lstm_shape = CLSTMargs[0]
-        self.conv_lstm_inp_chans = CLSTMargs[1]
-        self.conv_lstm_filter_size = CLSTMargs[2]
-        self.conv_lstm_num_features = CLSTMargs[3]
-        self.conv_lstm_nlayers = CLSTMargs[4]
-        self.conv_lstm = CLSTM( self.conv_lstm_shape, 
-                                self.conv_lstm_inp_chans, 
-                                self.conv_lstm_filter_size, 
-                                self.conv_lstm_num_features, 
-                                self.conv_lstm_nlayers)
-        self.conv_lstm.apply(weights_init)
-        self.conv_lstm.cuda()
+        self.cell = cell
+
+        self.conv_rnn_shape = CRNNargs[0]
+        self.conv_rnn_inp_chans = CRNNargs[1]
+        self.conv_rnn_filter_size = CRNNargs[2]
+        self.conv_rnn_num_features = CRNNargs[3]
+        self.conv_rnn_nlayers = CRNNargs[4]
+        self.conv_rnn = CRNN( self.conv_rnn_shape, 
+                                self.conv_rnn_inp_chans, 
+                                self.conv_rnn_filter_size, 
+                                self.conv_rnn_num_features, 
+                                self.conv_rnn_nlayers, 
+                                self.cell)
+        self.conv_rnn.apply(weights_init)
+        self.conv_rnn.cuda()
 
         self.decoder_shape = decoderargs[0]
         self.decoder_num_features = decoderargs[1]
@@ -192,77 +247,17 @@ class PredModel(nn.Module):
         self.decoder.cuda()
 
     def forward(self, input, hidden_state):
-        out = self.conv_lstm(input, hidden_state)
-        pred = self.decoder(out[0][0][0], out[0][0][1])
+        out = self.conv_rnn(input, hidden_state)
+        if self.cell == 'CGRU':
+            pred = self.decoder(out[0][0], out[0][1])
+        else:
+            pred = self.decoder(out[0][0][0], out[0][0][1])
         return pred
 
     def init_hidden(self, batch_size):
-        init_states = self.conv_lstm.init_hidden(batch_size)
+        init_states = self.conv_rnn.init_hidden(batch_size)
         return init_states
 
 def crossentropyloss(pred, target):
     loss = -torch.sum(torch.log(pred)*target + torch.log(1-pred)*(1-target))
     return loss
-
-###########Usage#######################################    
-mnistdata = MovingMNISTdataset("mnist_test_seq.npy")
-batch_size = 10
-
-CLSTM_num_features=64
-CLSTM_filter_size=5
-CLSTM_shape=(64,64)#H,W
-CLSTM_inp_chans=1
-CLSTM_nlayers=2
-
-CLSTMargs = [CLSTM_shape, CLSTM_inp_chans, CLSTM_filter_size, CLSTM_num_features, CLSTM_nlayers]
-
-decoder_shape = (64, 64)
-decoder_num_features = CLSTM_nlayers*CLSTM_num_features
-decoder_filter_size = 5
-decoder_stride = 1
-
-decoderargs = [decoder_shape, decoder_num_features, decoder_filter_size, decoder_stride]
-
-
-def main():
-    '''
-    main function to run the training
-    '''
-    net = PredModel(CLSTMargs, decoderargs)
-    #lossfunction = nn.MSELoss().cuda()
-    optimizer = optim.RMSprop(net.parameters(), lr = 0.001)
-
-    hidden_state = net.init_hidden(batch_size)
-
-    for echo in xrange(1):
-
-        for n in xrange(700):
-
-            getitem = mnistdata.__getitem__(n, mode = "train")#shape of 20 10 1 64 64, seq, batch, inpchan, shape
-            total = 0
-
-            for i in xrange(10):
-                input = getitem[i:i+9, ...].cuda()
-                label = getitem[i+10, ...].cuda()
-
-                optimizer.zero_grad()
-
-                hidden_state = net.init_hidden(batch_size)
-                pred = net(input, hidden_state)
-
-                pred = F.sigmoid(pred.view(10, -1))
-                label = F.sigmoid(pred.view(10, -1))
-
-                #loss = lossfunction(pred, label)
-                loss = crossentropyloss(pred, label)
-                total += loss
-                loss.backward()
-
-                print total
-
-                optimizer.step()
-
-            print "loss: ", total/10
-            
-if __name__ == "__main__":
-    main()

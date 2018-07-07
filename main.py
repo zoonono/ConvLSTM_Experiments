@@ -9,33 +9,34 @@ parser.add_argument('-xentro', '--crossentropyloss', help = 'use Cross Entropy L
 args = parser.parse_args()
 
 if args.convlstm:
-    basecell = 'convlstm'
+    basecell = 'CLSTM'
 if args.convgru:
-    basecell = 'convgru'
+    basecell = 'CGRU'
 else:
-    basecell = 'convlstm'
+    basecell = 'CGRU'
 
 if args.MSELoss:
     objectfunction = 'MSELoss'
 if args.crossentropyloss:
     objectfunction = 'crossentropyloss'
+else:
+    objectfunction = 'MSELoss'
 
-print basecell, objectfunction
-exit()
+
 
 mnistdata = MovingMNISTdataset("mnist_test_seq.npy")
 batch_size = 10
 
-CLSTM_num_features=32
-CLSTM_filter_size=5
-CLSTM_shape=(64,64)#H,W
-CLSTM_inp_chans=1
-CLSTM_nlayers=2
+CRNN_num_features=32
+CRNN_filter_size=5
+CRNN_shape=(64,64)#H,W
+CRNN_inp_chans=1
+CRNN_nlayers=2
 
-CLSTMargs = [CLSTM_shape, CLSTM_inp_chans, CLSTM_filter_size, CLSTM_num_features, CLSTM_nlayers]
+CRNNargs = [CRNN_shape, CRNN_inp_chans, CRNN_filter_size, CRNN_num_features, CRNN_nlayers]
 
 decoder_shape = (64, 64)
-decoder_num_features = CLSTM_nlayers*CLSTM_num_features
+decoder_num_features = CRNN_nlayers*CRNN_num_features
 decoder_filter_size = 5
 decoder_stride = 1
 
@@ -46,8 +47,11 @@ def main():
     '''
     main function to run the training
     '''
-    net = PredModel(CLSTMargs, decoderargs)
-    #lossfunction = nn.MSELoss().cuda()
+    net = PredModel(CRNNargs, decoderargs, cell = basecell)
+
+    if objectfunction == 'MSELoss':
+        lossfunction = nn.MSELoss().cuda()
+    
     optimizer = optim.RMSprop(net.parameters(), lr = 0.001)
 
     hidden_state = net.init_hidden(batch_size)
@@ -68,15 +72,14 @@ def main():
                 hidden_state = net.init_hidden(batch_size)
                 pred = net(input, hidden_state)
 
-                pred = F.sigmoid(pred.view(10, -1))
-                label = F.sigmoid(pred.view(10, -1))
-
-                #loss = lossfunction(pred, label)
-                loss = crossentropyloss(pred, label)
+                if objectfunction == 'MSELoss':
+                    loss = lossfunction(pred, label)
+                if objectfunction == 'crossentropyloss':
+                    pred = F.sigmoid(pred.view(10, -1))
+                    label = F.sigmoid(label.view(10, -1))
+                    loss = crossentropyloss(pred, label)
                 total += loss
                 loss.backward()
-
-                print total
 
                 optimizer.step()
 
