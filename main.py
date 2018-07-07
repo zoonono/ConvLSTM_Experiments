@@ -1,4 +1,27 @@
 from Pytorch_RNN import *
+import argparse
+
+parser = argparse.ArgumentParser(description = "Determine the Type of Cells and Loss Function to be Used")
+parser.add_argument('-clstm','--convlstm', help = 'use convlstm as base cell', action = 'store_true')
+parser.add_argument('-cgru','--convgru', help = 'use convgru as base cell', action = 'store_true')
+parser.add_argument('-MSE', '--MSELoss', help = 'use MSE as loss function', action = 'store_true')
+parser.add_argument('-xentro', '--crossentropyloss', help = 'use Cross Entropy Loss as loss function', action = 'store_true')
+args = parser.parse_args()
+
+if args.convlstm:
+    basecell = 'convlstm'
+if args.convgru:
+    basecell = 'convgru'
+else:
+    basecell = 'convlstm'
+
+if args.MSELoss:
+    objectfunction = 'MSELoss'
+if args.crossentropyloss:
+    objectfunction = 'crossentropyloss'
+
+print basecell, objectfunction
+exit()
 
 mnistdata = MovingMNISTdataset("mnist_test_seq.npy")
 batch_size = 10
