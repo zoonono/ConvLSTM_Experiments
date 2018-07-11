@@ -46,7 +46,7 @@ def main():
     '''
     main function to run the training
     '''
-    device = torch.device("cuda:0")
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
     net = PredModel(CRNNargs, decoderargs, cell = basecell)
     if torch.cuda.device_count()>1:
