@@ -42,12 +42,16 @@ decoder_stride = 1
 
 decoderargs = [decoder_shape, decoder_num_features, decoder_filter_size, decoder_stride]
 
-
 def main():
     '''
     main function to run the training
     '''
+    device = torch.device("cuda:0")
+
     net = PredModel(CRNNargs, decoderargs, cell = basecell)
+    if torch.cuda.device_count()>1:
+        net = nn.DataParallel(net)
+    net.to(device)
 
     if objectfunction == 'MSELoss':
         lossfunction = nn.MSELoss().cuda()
