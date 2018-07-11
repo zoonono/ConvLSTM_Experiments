@@ -27,11 +27,11 @@ class MovingMNISTdataset(Dataset):
         ##getitem method
         if mode == "train":
             self.trainsample_ = self.train[:, 10*indx:10*(indx+1), :, :]
-            self.sample_ = self.trainsample_
+            self.sample_ = self.trainsample_/255
 
         if mode == "test":
             self.testsample_ = self.test[:, 10*indx:10*(index+1), :, :]
-            self.sample_ = self.trainsample_
+            self.sample_ = self.trainsample_/255
 
         self.sample = torch.from_numpy(np.expand_dims(self.sample_, axis = 2)).float()
         return self.sample

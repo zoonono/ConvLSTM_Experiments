@@ -13,14 +13,14 @@ if args.convlstm:
 if args.convgru:
     basecell = 'CGRU'
 else:
-    basecell = 'CGRU'
+    basecell = 'CLSTM'
 
 if args.MSELoss:
     objectfunction = 'MSELoss'
 if args.crossentropyloss:
     objectfunction = 'crossentropyloss'
 else:
-    objectfunction = 'MSELoss'
+    objectfunction = 'crossentropyloss'
 
 
 
@@ -56,7 +56,7 @@ def main():
 
     hidden_state = net.init_hidden(batch_size)
 
-    for echo in xrange(1):
+    for epoch in xrange(1):
 
         for n in xrange(700):
 
@@ -76,14 +76,14 @@ def main():
                     loss = lossfunction(pred, label)
                 if objectfunction == 'crossentropyloss':
                     pred = F.sigmoid(pred.view(10, -1))
-                    label = F.sigmoid(label.view(10, -1))
+                    label = label.view(10, -1)
                     loss = crossentropyloss(pred, label)
                 total += loss
                 loss.backward()
 
                 optimizer.step()
 
-            print "loss: ", total/10
+            print "loss: ", total.item()/10*1000, "E-3   epoch: ", epoch
 
 if __name__ == "__main__":
     main()
