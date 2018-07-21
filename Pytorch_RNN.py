@@ -214,7 +214,7 @@ class CRNNDecoder(nn.Module):
     """
     Seq2Seq Model Decoder
     """
-    def __init__(self, shape, input_chans, filter_size, num_features, num_layers, cell = "CLSTM"):
+    def __init__(self, decoderargs, shape, input_chans, filter_size, num_features, num_layers, cell = "CLSTM"):
         super(CRNNDecoder, self).__init__()
 
         self.shape = shape#H,W
@@ -223,6 +223,7 @@ class CRNNDecoder(nn.Module):
         self.num_features = num_features
         self.num_layers=num_layers
         self.cell = cell
+        self.pred_len = 9
 
         cell_list=[]
         
@@ -240,6 +241,57 @@ class CRNNDecoder(nn.Module):
             for idcell in xrange(1,self.num_layers):
                 cell_list.append(CLSTM_cell(self.shape, self.num_features, self.filter_size, self.num_features).cuda())
             self.cell_list=nn.ModuleList(cell_list) 
+
+
+        self.decoder_shape = decoderargs[0]
+        self.decoder_num_features = decoderargs[1]
+        self.decoder_filter_size = decoderargs[2]
+        self.decoder_stride = decoderargs[3]
+        self.decoder = MNISTDecoder(self.decoder_shape, 
+                                    self.decoder_num_features, 
+                                    self.decoder_filter_size, 
+                                    self.decoder_stride)
+        self.decoder.apply(weights_init)
+        self.decoder.cuda()
+
+
+    def forward(self, input, hidden_state):
+        """
+        args:
+            hidden_state:list of tuples, one for every layer, each tuple should be hidden_layer_i,c_layer_i
+            input is the tensor of shape seq_len,Batch,Chans,H,W
+        """
+
+        #current_input = input.transpose(0, 1)#now is seq_len,B,C,H,W
+        prediction = []
+        output = self.decoder(hidden_state[0], hidden_state[1])
+        prediction.append(output)
+
+        current_input=output
+        next_hidden=[]#hidden states(h and c)
+        seq_len=self.pred_len
+
+        
+        for idlayer in xrange(self.num_layers):#loop for every layer
+
+            hidden_c=hidden_state[idlayer]#hidden and c are images with several channels
+            all_output = []
+            output_inner = []
+
+            for t in xrange(seq_len):#loop for every step
+                hidden_c=self.cell_list[idlayer](current_input[t, :, :, :, :],hidden_c)
+                if self.cell == 'CLSTM':
+                    output_inner.append(hidden_c[0])
+                else:
+                    output_inner.append(hidden_c)
+
+            next_hidden.append(hidden_c)
+            if self.cell == 'CLSTM':
+                current_input = torch.cat(output_inner, 0).view(seq_len, *output_inner[0].size())#seq_len,B,chans,H,W
+            else:
+                current_input = torch.cat(output_inner, 0).view(seq_len, *output_inner[0].size())
+
+        return next_hidden, current_input
 
 
 class PredModel(nn.Module):
