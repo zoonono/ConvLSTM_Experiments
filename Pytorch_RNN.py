@@ -44,7 +44,6 @@ def weights_init(m):
         m.weight.data.normal_(1.0, 0.02)
         m.bias.data.fill_(0)
 
-
 class CGRU_cell(nn.Module):
     """
     ConvGRU Cell
@@ -77,7 +76,6 @@ class CGRU_cell(nn.Module):
 
     def init_hidden(self, batch_size):
         return Variable(torch.zeros(batch_size, self.num_features, self.shape[0], self.shape[1])).cuda()
-
 
 class CLSTM_cell(nn.Module):
     """ConvLSTMCell
@@ -211,6 +209,38 @@ class MNISTDecoder(nn.Module):
         output = self.conv(inputlayer)
 
         return output 
+
+class CRNNDecoder(nn.Module):
+    """
+    Seq2Seq Model Decoder
+    """
+    def __init__(self, shape, input_chans, filter_size, num_features, num_layers, cell = "CLSTM"):
+        super(CRNNDecoder, self).__init__()
+
+        self.shape = shape#H,W
+        self.input_chans=input_chans
+        self.filter_size=filter_size
+        self.num_features = num_features
+        self.num_layers=num_layers
+        self.cell = cell
+
+        cell_list=[]
+        
+        if self.cell == 'CGRU':
+            cell_list.append(CGRU_cell(self.shape, self.input_chans, self.filter_size, self.num_features).cuda())            
+        
+            for idcell in xrange(1,self.num_layers):
+                cell_list.append(CGRU_cell(self.shape, self.num_features, self.filter_size, self.num_features).cuda())
+            self.cell_list=nn.ModuleList(cell_list)
+
+        
+        else:
+            cell_list.append(CLSTM_cell(self.shape, self.input_chans, self.filter_size, self.num_features).cuda())
+
+            for idcell in xrange(1,self.num_layers):
+                cell_list.append(CLSTM_cell(self.shape, self.num_features, self.filter_size, self.num_features).cuda())
+            self.cell_list=nn.ModuleList(cell_list) 
+
 
 class PredModel(nn.Module):
     """
