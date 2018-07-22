@@ -264,34 +264,43 @@ class CRNNDecoder(nn.Module):
 
         #current_input = input.transpose(0, 1)#now is seq_len,B,C,H,W
         prediction = []
+        next_hidden = []
         output = self.decoder(hidden_state[0], hidden_state[1])
         prediction.append(output)
 
-        current_input=output
-        next_hidden=[]#hidden states(h and c)
-        seq_len=self.pred_len
+        current_input = output
+        seq_len = self.pred_len
 
-        
-        for idlayer in xrange(self.num_layers):#loop for every layer
+        for t in xrange(seq_len):
 
-            hidden_c=hidden_state[idlayer]#hidden and c are images with several channels
-            all_output = []
+            hidden_c = hidden_state[idlayer]
             output_inner = []
 
-            for t in xrange(seq_len):#loop for every step
-                hidden_c=self.cell_list[idlayer](current_input[t, :, :, :, :],hidden_c)
+            for idlayer in xrange(self.num_layers-1):
+
+                hidden_c = self.cell_list[idlayer](current_input, hidden_c)
                 if self.cell == 'CLSTM':
                     output_inner.append(hidden_c[0])
                 else:
                     output_inner.append(hidden_c)
 
-            next_hidden.append(hidden_c)
-            if self.cell == 'CLSTM':
-                current_input = torch.cat(output_inner, 0).view(seq_len, *output_inner[0].size())#seq_len,B,chans,H,W
-            else:
-                current_input = torch.cat(output_inner, 0).view(seq_len, *output_inner[0].size())
+                next_hidden.append(hidden_c)
+                if self.cell == 'CLSTM':
+                    current_input = torch.cat(output_inner, 0).view(1, output_inner[0].size())
+                else:
+                    current_input = torch.cat(output_inner, 0).view(1, output_inner[0].size())
 
-        return next_hidden, current_input
+            current_input = self.decoder(output_inner[0], output_inner[1])
+            prediction.append(current_input)
+
+        return prediction
+
+    def init_hidden(self,batch_size):
+
+        init_states=[]#this is a list of tuples
+        for i in xrange(self.num_layers):
+            init_states.append(self.cell_list[i].init_hidden(batch_size))
+        return init_states
 
 
 class PredModel(nn.Module):
