@@ -13,7 +13,7 @@ if args.convlstm:
 if args.convgru:
     basecell = 'CGRU'
 else:
-    basecell = 'CLSTM'
+    basecell = 'CGRU'
 
 if args.MSELoss:
     objectfunction = 'MSELoss'

@@ -265,7 +265,11 @@ class CRNNDecoder(nn.Module):
 
         #current_input = input.transpose(0, 1)#now is seq_len,B,C,H,W
         prediction = []
-        output = self.decoder(hidden_state[0][0], hidden_state[1][0])
+        if self.cell == 'CGRU':
+            output = self.decoder(hidden_state[0], hidden_state[1])
+        else:
+            output = self.decoder(hidden_state[0][0], hidden_state[1][0])
+    
         prediction.append(output)
 
         current_input = output
@@ -350,7 +354,7 @@ class PredModel(nn.Module):
         out = self.conv_rnn(input, hidden_state)
         
         if self.cell == 'CGRU':
-            pred = self.seq2seq_decoder(out[0][0], out[0][1])
+            pred = self.seq2seq_decoder([out[0][0], out[0][1]])
         else:
             pred = self.seq2seq_decoder([out[0][0], out[0][1]])
 
