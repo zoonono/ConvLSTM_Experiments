@@ -76,7 +76,10 @@ def main():
             pred = net(input, hidden_state)
 
             if objectfunction == 'MSELoss':
-                loss = lossfunction(pred, label)
+                loss = 0
+                for seq in range(len(label)):
+                    loss += lossfunction(pred[seq], label[seq])
+
             if objectfunction == 'crossentropyloss':
                 loss = 0
                 for seq in range(10):
@@ -84,12 +87,9 @@ def main():
                     labelframe = label[seq].view(10, -1)
                     loss += crossentropyloss(predframe, labelframe)
                 
-                loss.backward()
-                print(loss)
-
+            print "loss: ", loss, "  epoch :", epoch
+            loss.backward()
             optimizer.step()
-
-        print "loss: ", total.item()/10*1000, "E-3   epoch: ", epoch
 
 # def main():
 #     '''
