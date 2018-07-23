@@ -67,27 +67,76 @@ def main():
             getitem = mnistdata.__getitem__(n, mode = "train")#shape of 20 10 1 64 64, seq, batch, inpchan, shape
             total = 0
 
-            for i in xrange(10):
-                input = getitem[i:i+9, ...].cuda()
-                label = getitem[i+10, ...].cuda()
+            input = getitem[0:10, ...].cuda()
+            label = getitem[10:20, ...].cuda()
 
-                optimizer.zero_grad()
+            optimizer.zero_grad()
 
-                hidden_state = net.init_hidden(batch_size)
-                pred = net(input, hidden_state)
+            hidden_state = net.init_hidden(batch_size)
+            pred = net(input, hidden_state)
 
-                if objectfunction == 'MSELoss':
-                    loss = lossfunction(pred, label)
-                if objectfunction == 'crossentropyloss':
-                    pred = F.sigmoid(pred.view(10, -1))
-                    label = label.view(10, -1)
-                    loss = crossentropyloss(pred, label)
-                total += loss
+            if objectfunction == 'MSELoss':
+                loss = lossfunction(pred, label)
+            if objectfunction == 'crossentropyloss':
+                loss = 0
+                for seq in range(10):
+                    predframe = F.sigmoid(pred[seq].view(10, -1))
+                    labelframe = label[seq].view(10, -1)
+                    loss += crossentropyloss(predframe, labelframe)
+                
                 loss.backward()
+                print(loss)
 
-                optimizer.step()
+            optimizer.step()
 
-            print "loss: ", total.item()/10*1000, "E-3   epoch: ", epoch
+        print "loss: ", total.item()/10*1000, "E-3   epoch: ", epoch
+
+# def main():
+#     '''
+#     main function to run the training
+#     '''
+#     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
+#     net = PredModel(CRNNargs, decoderargs, cell = basecell)
+#     if torch.cuda.device_count()>1:
+#         net = nn.DataParallel(net)
+#     net.to(device)
+
+#     if objectfunction == 'MSELoss':
+#         lossfunction = nn.MSELoss().cuda()
+    
+#     optimizer = optim.RMSprop(net.parameters(), lr = 0.001)
+
+#     hidden_state = net.init_hidden(batch_size)
+
+#     for epoch in xrange(1):
+
+#         for n in xrange(700):
+
+#             getitem = mnistdata.__getitem__(n, mode = "train")#shape of 20 10 1 64 64, seq, batch, inpchan, shape
+#             total = 0
+
+#             for i in xrange(10):
+#                 input = getitem[i:i+9, ...].cuda()
+#                 label = getitem[i+10, ...].cuda()
+
+#                 optimizer.zero_grad()
+
+#                 hidden_state = net.init_hidden(batch_size)
+#                 pred = net(input, hidden_state)
+
+#                 if objectfunction == 'MSELoss':
+#                     loss = lossfunction(pred, label)
+#                 if objectfunction == 'crossentropyloss':
+#                     pred = F.sigmoid(pred.view(10, -1))
+#                     label = label.view(10, -1)
+#                     loss = crossentropyloss(pred, label)
+#                 total += loss
+#                 loss.backward()
+
+#                 optimizer.step()
+
+#             print "loss: ", total.item()/10*1000, "E-3   epoch: ", epoch
 
 if __name__ == "__main__":
     main()

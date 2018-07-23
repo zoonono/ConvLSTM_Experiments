@@ -91,6 +91,7 @@ class CLSTM_cell(nn.Module):
         self.conv = nn.Conv2d(self.input_channels + self.num_features, 4*self.num_features, self.filter_size, 1, self.padding)
 
     def forward(self, input, hidden_state):
+
         hx, cx = hidden_state
         combined = torch.cat((input, hx), 1)
         gates = self.conv(combined)
@@ -255,7 +256,7 @@ class CRNNDecoder(nn.Module):
         self.decoder.cuda()
 
 
-    def forward(self, input, hidden_state):
+    def forward(self, hidden_state):
         """
         args:
             hidden_state:list of tuples, one for every layer, each tuple should be hidden_layer_i,c_layer_i
@@ -264,8 +265,7 @@ class CRNNDecoder(nn.Module):
 
         #current_input = input.transpose(0, 1)#now is seq_len,B,C,H,W
         prediction = []
-        next_hidden = []
-        output = self.decoder(hidden_state[0], hidden_state[1])
+        output = self.decoder(hidden_state[0][0], hidden_state[1][0])
         prediction.append(output)
 
         current_input = output
@@ -273,24 +273,23 @@ class CRNNDecoder(nn.Module):
 
         for t in xrange(seq_len):
 
-            hidden_c = hidden_state[idlayer]
-            output_inner = []
+            states = hidden_state
+            outputs = []
 
-            for idlayer in xrange(self.num_layers-1):
+            for idlayer in xrange(self.num_layers):
 
+                hidden_c = states[idlayer]
                 hidden_c = self.cell_list[idlayer](current_input, hidden_c)
                 if self.cell == 'CLSTM':
-                    output_inner.append(hidden_c[0])
+                    output_inner = (hidden_c[0])
                 else:
-                    output_inner.append(hidden_c)
+                    output_inner = (hidden_c)
 
-                next_hidden.append(hidden_c)
-                if self.cell == 'CLSTM':
-                    current_input = torch.cat(output_inner, 0).view(1, output_inner[0].size())
-                else:
-                    current_input = torch.cat(output_inner, 0).view(1, output_inner[0].size())
+                outputs.append(output_inner)
+                states[idlayer] = hidden_c
+                current_input = output_inner
 
-            current_input = self.decoder(output_inner[0], output_inner[1])
+            current_input = self.decoder(outputs[0], outputs[1])
             prediction.append(current_input)
 
         return prediction
@@ -326,23 +325,39 @@ class PredModel(nn.Module):
         self.conv_rnn.apply(weights_init)
         self.conv_rnn.cuda()
 
-        self.decoder_shape = decoderargs[0]
-        self.decoder_num_features = decoderargs[1]
-        self.decoder_filter_size = decoderargs[2]
-        self.decoder_stride = decoderargs[3]
-        self.decoder = MNISTDecoder(self.decoder_shape, 
-                                    self.decoder_num_features, 
-                                    self.decoder_filter_size, 
-                                    self.decoder_stride)
-        self.decoder.apply(weights_init)
-        self.decoder.cuda()
+        self.decoder_args = decoderargs
+        self.seq2seq_decoder = CRNNDecoder(self.decoder_args, 
+                                            self.conv_rnn_shape, 
+                                            self.conv_rnn_inp_chans,
+                                            self.conv_rnn_filter_size,
+                                            self.conv_rnn_num_features,
+                                            self.conv_rnn_nlayers,
+                                            self.cell)
+        self.seq2seq_decoder.apply(weights_init)
+        self.conv_rnn.cuda()
+        # self.decoder_shape = decoderargs[0]
+        # self.decoder_num_features = decoderargs[1]
+        # self.decoder_filter_size = decoderargs[2]
+        # self.decoder_stride = decoderargs[3]
+        # self.decoder = MNISTDecoder(self.decoder_shape, 
+        #                             self.decoder_num_features, 
+        #                             self.decoder_filter_size, 
+        #                             self.decoder_stride)
+        # self.decoder.apply(weights_init)
+        # self.decoder.cuda()
 
     def forward(self, input, hidden_state):
         out = self.conv_rnn(input, hidden_state)
+        
         if self.cell == 'CGRU':
-            pred = self.decoder(out[0][0], out[0][1])
+            pred = self.seq2seq_decoder(out[0][0], out[0][1])
         else:
-            pred = self.decoder(out[0][0][0], out[0][0][1])
+            pred = self.seq2seq_decoder([out[0][0], out[0][1]])
+
+        # if self.cell == 'CGRU':
+        #     pred = self.decoder(out[0][0], out[0][1])
+        # else:
+        #     pred = self.decoder(out[0][0][0], out[0][0][1])
         return pred
 
     def init_hidden(self, batch_size):
@@ -352,3 +367,5 @@ class PredModel(nn.Module):
 def crossentropyloss(pred, target):
     loss = -torch.sum(torch.log(pred)*target + torch.log(1-pred)*(1-target))
     return loss
+
+
