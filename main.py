@@ -1,4 +1,5 @@
 from Pytorch_RNN import *
+from torch.utils.data import DataLoader
 import argparse
 
 parser = argparse.ArgumentParser(description = "Determine the Type of Cells and Loss Function to be Used")
@@ -23,11 +24,12 @@ else:
     objectfunction = 'crossentropyloss'
 
 
-
+###Dataset and Dataloader
+batch_size = 20
 mnistdata = MovingMNISTdataset("mnist_test_seq.npy")
-batch_size = 10
+trainingdata_loader = DataLoader(dataset = mnistdata, batch_size = batch_size, shuffle=True)
 
-CRNN_num_features=32
+CRNN_num_features=8
 CRNN_filter_size=5
 CRNN_shape=(64,64)#H,W
 CRNN_inp_chans=1
@@ -46,11 +48,15 @@ def main():
     '''
     main function to run the training
     '''
-    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-
     net = PredModel(CRNNargs, decoderargs, cell = basecell)
+    
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     if torch.cuda.device_count()>1:
         net = nn.DataParallel(net)
+        multipleDevice = True
+    else:
+        multipleDevice = False
+
     net.to(device)
 
     if objectfunction == 'MSELoss':
@@ -58,21 +64,27 @@ def main():
     
     optimizer = optim.RMSprop(net.parameters(), lr = 0.001)
 
-    hidden_state = net.init_hidden(batch_size)
+    if multipleDevice:
+        hidden_state = net.module.init_hidden(batch_size)
+    else:
+        hidden_state = net.init_hidden(batch_size)
 
-    for epoch in xrange(1):
+    for epoch in xrange(100):
 
-        for n in xrange(700):
+        for data in trainingdata_loader:
 
-            getitem = mnistdata.__getitem__(n, mode = "train")#shape of 20 10 1 64 64, seq, batch, inpchan, shape
             total = 0
 
-            input = getitem[0:10, ...].cuda()
-            label = getitem[10:20, ...].cuda()
+            input = data[:, 0:10, ...].to(device)
+            label = data[:, 10:20, ...].to(device)
 
             optimizer.zero_grad()
 
-            hidden_state = net.init_hidden(batch_size)
+            if multipleDevice:
+                hidden_state = net.module.init_hidden(batch_size)
+            else:
+                hidden_state = net.init_hidden(batch_size)
+
             pred = net(input, hidden_state)
 
             if objectfunction == 'MSELoss':
@@ -83,8 +95,8 @@ def main():
             if objectfunction == 'crossentropyloss':
                 loss = 0
                 for seq in range(10):
-                    predframe = F.sigmoid(pred[seq].view(10, -1))
-                    labelframe = label[seq].view(10, -1)
+                    predframe = F.sigmoid(pred[seq].view(batch_size, -1))
+                    labelframe = label[:, seq, ...].view(batch_size, -1)
                     loss += crossentropyloss(predframe, labelframe)
                 
             print "loss: ", loss, "  epoch :", epoch

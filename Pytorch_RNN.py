@@ -10,30 +10,24 @@ from torch.autograd import Variable
 def MNISTdataLoader(path):
     ##load moving mnist data, data shape = [time steps, batch size, width, height] = [20, batch_size, 64, 64]
     data = np.load(path)
-    train = data[:, 0:7000, :, :]
-    test = data[:, 7000:10000, :, :]
-    return train, test
+    train = data.transpose(1, 0, 2, 3)
+    return train
 
 class MovingMNISTdataset(Dataset):
     ##dataset class for moving MNIST data
     def __init__(self, path):
         self.path = path
-        self.train, self.test = MNISTdataLoader(path)
+        self.data = MNISTdataLoader(path)
 
     def __len__(self):
-        return len(self.train[0])
+        return len(self.data[:, 0, 0, 0])
 
-    def __getitem__(self, indx, mode = "train"):
+    def __getitem__(self, indx):
         ##getitem method
-        if mode == "train":
-            self.trainsample_ = self.train[:, 10*indx:10*(indx+1), :, :]
-            self.sample_ = self.trainsample_/255
+        self.trainsample_ = self.data[indx, ...]
+        self.sample_ = self.trainsample_/255
 
-        if mode == "test":
-            self.testsample_ = self.test[:, 10*indx:10*(index+1), :, :]
-            self.sample_ = self.trainsample_/255
-
-        self.sample = torch.from_numpy(np.expand_dims(self.sample_, axis = 2)).float()
+        self.sample = torch.from_numpy(np.expand_dims(self.sample_, axis = 1)).float()
         return self.sample
 
 def weights_init(m):
@@ -168,6 +162,8 @@ class CRNN(nn.Module):
             output_inner = []
 
             for t in xrange(seq_len):#loop for every step
+                # print(hidden_c.shape)
+                # print(current_input[t, ...].shape)
                 hidden_c=self.cell_list[idlayer](current_input[t, :, :, :, :],hidden_c)
                 if self.cell == 'CLSTM':
                     output_inner.append(hidden_c[0])
@@ -294,7 +290,7 @@ class CRNNDecoder(nn.Module):
                 current_input = output_inner
 
             current_input = self.decoder(outputs[0], outputs[1])
-            prediction.append(current_input)
+            prediction.append(current_input.transpose(0, 1))
 
         return prediction
 
@@ -351,7 +347,8 @@ class PredModel(nn.Module):
         # self.decoder.cuda()
 
     def forward(self, input, hidden_state):
-        out = self.conv_rnn(input, hidden_state)
+        input_transpose = input.transpose(0, 1)
+        out = self.conv_rnn(input_transpose, hidden_state)
         
         if self.cell == 'CGRU':
             pred = self.seq2seq_decoder([out[0][0], out[0][1]])
