@@ -1,6 +1,7 @@
 from Pytorch_RNN import *
 from torch.utils.data import DataLoader
 import argparse
+import os
 
 parser = argparse.ArgumentParser(description = "Determine the Type of Cells and Loss Function to be Used")
 parser.add_argument('-clstm','--convlstm', help = 'use convlstm as base cell', action = 'store_true')
@@ -29,7 +30,7 @@ batch_size = 20
 mnistdata = MovingMNISTdataset("mnist_test_seq.npy")
 trainingdata_loader = DataLoader(dataset = mnistdata, batch_size = batch_size, shuffle=True)
 
-CRNN_num_features=8
+CRNN_num_features=128
 CRNN_filter_size=5
 CRNN_shape=(64,64)#H,W
 CRNN_inp_chans=1
@@ -44,7 +45,7 @@ decoder_stride = 1
 
 decoderargs = [decoder_shape, decoder_num_features, decoder_filter_size, decoder_stride]
 
-def main():
+def train():
     '''
     main function to run the training
     '''
@@ -62,14 +63,14 @@ def main():
     if objectfunction == 'MSELoss':
         lossfunction = nn.MSELoss().cuda()
     
-    optimizer = optim.RMSprop(net.parameters(), lr = 0.001)
+    optimizer = optim.RMSprop(net.parameters(), lr = 0.0002)
 
     if multipleDevice:
         hidden_state = net.module.init_hidden(batch_size)
     else:
         hidden_state = net.init_hidden(batch_size)
 
-    for epoch in xrange(100):
+    for epoch in xrange(1):
 
         for data in trainingdata_loader:
 
@@ -103,52 +104,41 @@ def main():
             loss.backward()
             optimizer.step()
 
-# def main():
-#     '''
-#     main function to run the training
-#     '''
-#     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+            break
 
-#     net = PredModel(CRNNargs, decoderargs, cell = basecell)
-#     if torch.cuda.device_count()>1:
-#         net = nn.DataParallel(net)
-#     net.to(device)
+    save_path = os.getcwd()
+    torch.save(net, save_path+"/trained_model")
 
-#     if objectfunction == 'MSELoss':
-#         lossfunction = nn.MSELoss().cuda()
-    
-#     optimizer = optim.RMSprop(net.parameters(), lr = 0.001)
+def test():
+    file_path = os.getcwd() + '/trained_model'
+    testnet = torch.load(file_path)
 
-#     hidden_state = net.init_hidden(batch_size)
+def inference():
 
-#     for epoch in xrange(1):
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    if torch.cuda.device_count()>1:
+        net = nn.DataParallel(net)
+        multipleDevice = True
+    else:
+        multipleDevice = False
 
-#         for n in xrange(700):
+    file_path = os.getcwd() + '/trained_model'
+    inferencenet = torch.load(file_path)
 
-#             getitem = mnistdata.__getitem__(n, mode = "train")#shape of 20 10 1 64 64, seq, batch, inpchan, shape
-#             total = 0
+    for data in trainingdata_loader:
+        input = data[:, 0:10, ...].to(device)
+        if multipleDevice:
+            hidden_state = inferencenet.module.init_hidden(batch_size)
+        else:
+            hidden_state = inferencenet.init_hidden(batch_size)
 
-#             for i in xrange(10):
-#                 input = getitem[i:i+9, ...].cuda()
-#                 label = getitem[i+10, ...].cuda()
+        pred = inferencenet(input, hidden_state)
+        break
 
-#                 optimizer.zero_grad()
-
-#                 hidden_state = net.init_hidden(batch_size)
-#                 pred = net(input, hidden_state)
-
-#                 if objectfunction == 'MSELoss':
-#                     loss = lossfunction(pred, label)
-#                 if objectfunction == 'crossentropyloss':
-#                     pred = F.sigmoid(pred.view(10, -1))
-#                     label = label.view(10, -1)
-#                     loss = crossentropyloss(pred, label)
-#                 total += loss
-#                 loss.backward()
-
-#                 optimizer.step()
-
-#             print "loss: ", total.item()/10*1000, "E-3   epoch: ", epoch
+    np.save(os.getcwd()+'/input', input)
+    np.save(os.getcwd()+'/label', data[:, 10:20, ...])
+    np.save(os.getcwd()+'/inference', pred)
 
 if __name__ == "__main__":
-    main()
+    train()
+    inference()
