@@ -104,8 +104,6 @@ def train():
             loss.backward()
             optimizer.step()
 
-            break
-
     save_path = os.getcwd()
     torch.save(net, save_path+"/trained_model")
 
