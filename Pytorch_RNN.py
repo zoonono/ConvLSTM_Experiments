@@ -1,10 +1,13 @@
 import numpy as np 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 import torch.optim as optim
+import os
+# import torch.nn.functional as F
+
 from torch.utils.data import Dataset
 from torch.autograd import Variable
+
 
 
 def MNISTdataLoader(path):
@@ -25,7 +28,7 @@ class MovingMNISTdataset(Dataset):
     def __getitem__(self, indx):
         ##getitem method
         self.trainsample_ = self.data[indx, ...]
-        self.sample_ = self.trainsample_/255
+        self.sample_ = self.trainsample_/255.0
 
         self.sample = torch.from_numpy(np.expand_dims(self.sample_, axis = 1)).float()
         return self.sample
@@ -58,12 +61,12 @@ class CGRU_cell(nn.Module):
         gates = self.conv1(combined_1)
 
         zgate, rgate = torch.split(gates, self.num_features, dim=1)
-        z = F.sigmoid(zgate)
-        r = F.sigmoid(rgate)
+        z = torch.sigmoid(zgate)
+        r = torch.sigmoid(rgate)
 
         combined_2 = torch.cat((input, r*htprev), 1)
         ht = self.conv2(combined_2)
-        ht = F.tanh(ht)
+        ht = torch.tanh(ht)
         htnext = (1-z)*htprev + z*ht
 
         return htnext
@@ -91,13 +94,13 @@ class CLSTM_cell(nn.Module):
         gates = self.conv(combined)
 
         ingate, forgetgate, cellgate, outgate = torch.split(gates, self.num_features, dim=1)
-        ingate = F.sigmoid(ingate)
-        forgetgate = F.sigmoid(forgetgate)
-        cellgate = F.tanh(cellgate)
-        outgate = F.sigmoid(outgate)
+        ingate = torch.sigmoid(ingate)
+        forgetgate = torch.sigmoid(forgetgate)
+        cellgate = torch.tanh(cellgate)
+        outgate = torch.sigmoid(outgate)
 
         cy = (forgetgate*cx) + (ingate*cellgate)
-        hy = outgate * F.tanh(cy)
+        hy = outgate * torch.tanh(cy)
 
         return hy, cy
 
@@ -176,6 +179,8 @@ class CRNN(nn.Module):
             else:
                 current_input = torch.cat(output_inner, 0).view(seq_len, *output_inner[0].size())
 
+        # np.save(os.getcwd()+'/debug', next_hidden)
+        # exit()
         return next_hidden, current_input
 
     def init_hidden(self,batch_size):
@@ -220,7 +225,7 @@ class CRNNDecoder(nn.Module):
         self.num_features = num_features
         self.num_layers=num_layers
         self.cell = cell
-        self.pred_len = 9
+        self.pred_len = 10
 
         cell_list=[]
         
@@ -266,11 +271,10 @@ class CRNNDecoder(nn.Module):
         else:
             output = self.decoder(hidden_state[0][0], hidden_state[1][0])
     
-        prediction.append(output)
-
         current_input = output
-        seq_len = self.pred_len
+        prediction.append(output.transpose(0, 1))
 
+        seq_len = self.pred_len - 1
         for t in xrange(seq_len):
 
             states = hidden_state
@@ -281,9 +285,9 @@ class CRNNDecoder(nn.Module):
                 hidden_c = states[idlayer]
                 hidden_c = self.cell_list[idlayer](current_input, hidden_c)
                 if self.cell == 'CLSTM':
-                    output_inner = (hidden_c[0])
+                    output_inner = hidden_c[0]
                 else:
-                    output_inner = (hidden_c)
+                    output_inner = hidden_c
 
                 outputs.append(output_inner)
                 states[idlayer] = hidden_c
@@ -349,11 +353,13 @@ class PredModel(nn.Module):
     def forward(self, input, hidden_state):
         input_transpose = input.transpose(0, 1)
         out = self.conv_rnn(input_transpose, hidden_state)
-        
-        if self.cell == 'CGRU':
-            pred = self.seq2seq_decoder([out[0][0], out[0][1]])
-        else:
-            pred = self.seq2seq_decoder([out[0][0], out[0][1]])
+
+        pred = self.seq2seq_decoder([out[0][0], out[0][1]]) 
+
+        # if self.cell == 'CGRU':
+        #     pred = self.seq2seq_decoder([out[0][0], out[0][1]])
+        # else:
+        #     pred = self.seq2seq_decoder([out[0][0], out[0][1]])
 
         # if self.cell == 'CGRU':
         #     pred = self.decoder(out[0][0], out[0][1])

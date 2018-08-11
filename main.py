@@ -1,5 +1,6 @@
 from Pytorch_RNN import *
 from torch.utils.data import DataLoader
+import matplotlib.pyplot as plt
 import argparse
 import os
 
@@ -30,7 +31,7 @@ batch_size = 20
 mnistdata = MovingMNISTdataset("mnist_test_seq.npy")
 trainingdata_loader = DataLoader(dataset = mnistdata, batch_size = batch_size, shuffle=True)
 
-CRNN_num_features=128
+CRNN_num_features=8
 CRNN_filter_size=5
 CRNN_shape=(64,64)#H,W
 CRNN_inp_chans=1
@@ -96,7 +97,7 @@ def train():
             if objectfunction == 'crossentropyloss':
                 loss = 0
                 for seq in range(10):
-                    predframe = F.sigmoid(pred[seq].view(batch_size, -1))
+                    predframe = torch.sigmoid(pred[seq].view(batch_size, -1))
                     labelframe = label[:, seq, ...].view(batch_size, -1)
                     loss += crossentropyloss(predframe, labelframe)
                 
@@ -124,6 +125,7 @@ def inference():
     inferencenet = torch.load(file_path)
 
     for data in trainingdata_loader:
+
         input = data[:, 0:10, ...].to(device)
         if multipleDevice:
             hidden_state = inferencenet.module.init_hidden(batch_size)
@@ -131,12 +133,16 @@ def inference():
             hidden_state = inferencenet.init_hidden(batch_size)
 
         pred = inferencenet(input, hidden_state)
+        pred_np = []
+        for i in range(len(pred)):
+            append = pred[i].cpu()
+            pred_np.append(append.data.numpy())
         break
 
     np.save(os.getcwd()+'/input', input)
     np.save(os.getcwd()+'/label', data[:, 10:20, ...])
-    np.save(os.getcwd()+'/inference', pred)
+    np.save(os.getcwd()+'/inference', pred_np)
 
 if __name__ == "__main__":
-    train()
+    #train()
     inference()
