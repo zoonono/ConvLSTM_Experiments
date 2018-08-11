@@ -27,7 +27,7 @@ else:
 
 
 ###Dataset and Dataloader
-batch_size = 20
+batch_size = 128
 mnistdata = MovingMNISTdataset("mnist_test_seq.npy")
 trainingdata_loader = DataLoader(dataset = mnistdata, batch_size = batch_size, shuffle=True)
 
@@ -71,7 +71,7 @@ def train():
     else:
         hidden_state = net.init_hidden(batch_size)
 
-    for epoch in xrange(1):
+    for epoch in xrange(1000):
 
         for data in trainingdata_loader:
 
