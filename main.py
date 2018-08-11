@@ -1,6 +1,5 @@
 from Pytorch_RNN import *
 from torch.utils.data import DataLoader
-import matplotlib.pyplot as plt
 import argparse
 import os
 
@@ -27,11 +26,11 @@ else:
 
 
 ###Dataset and Dataloader
-batch_size = 128
+batch_size = 20
 mnistdata = MovingMNISTdataset("mnist_test_seq.npy")
 trainingdata_loader = DataLoader(dataset = mnistdata, batch_size = batch_size, shuffle=True)
 
-CRNN_num_features=8
+CRNN_num_features=128
 CRNN_filter_size=5
 CRNN_shape=(64,64)#H,W
 CRNN_inp_chans=1
@@ -144,5 +143,5 @@ def inference():
     np.save(os.getcwd()+'/inference', pred_np)
 
 if __name__ == "__main__":
-    #train()
+    train()
     inference()
